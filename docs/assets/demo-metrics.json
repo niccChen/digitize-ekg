@@ -1,0 +1,24 @@
+{
+  "source": "result/example.png",
+  "shape_height_width": [
+    392,
+    862
+  ],
+  "connectivity": 8,
+  "foreground_components": {
+    "input": 10,
+    "component-bridged": 1,
+    "constrained-bridged": 10,
+    "endpoint-bridged": 5
+  },
+  "first_endpoint_pass": {
+    "distance_threshold_px": 30,
+    "pairs_connected": 10
+  },
+  "interpretation": "Connectivity counts for one repository crop; not waveform accuracy or clinical validation.",
+  "runtime": {
+    "python": "3.11.13",
+    "opencv": "4.10.0",
+    "numpy": "2.2.6"
+  }
+}
