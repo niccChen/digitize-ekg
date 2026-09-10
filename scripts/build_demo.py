@@ -3,7 +3,6 @@
 Run signal_fixing.ipynb first, then: python scripts/build_demo.py
 """
 from pathlib import Path
-import ast
 import json
 import platform
 import shutil
@@ -29,7 +28,7 @@ source = cv2.imread(str(source_path), cv2.IMREAD_GRAYSCALE)
 if source is None:
     raise FileNotFoundError(source_path)
 results = {}
-for name in ['component-bridged', 'constrained-bridged', 'endpoint-bridged']:
+for name in ['component-bridged', 'constrained-bridged', 'endpoint-bridged', 'tangent-bridged']:
     path = OUTPUTS / f'{name}.png'
     if not path.exists():
         raise FileNotFoundError(f'{path.name} is missing. Run signal_fixing.ipynb first.')
@@ -38,37 +37,33 @@ for name in ['component-bridged', 'constrained-bridged', 'endpoint-bridged']:
         raise ValueError(f'{name}: output shape differs from the input.')
     shutil.copyfile(path, RAW / path.name)
 
-# Reuse the notebook's actual debug function for the first endpoint pass.
-notebook = json.loads((ROOT / 'signal_fixing.ipynb').read_text())
-definitions = []
-for cell in notebook['cells']:
-    if cell['cell_type'] == 'code':
-        definitions.extend(node for node in ast.parse(''.join(cell['source'])).body
-                           if isinstance(node, ast.FunctionDef) and node.name == 'fix_ecg_debug')
-if len(definitions) != 1:
-    raise RuntimeError('Expected exactly one fix_ecg_debug definition in the notebook.')
-namespace = {'cv2': cv2, 'np': np, 'skeletonize': skeletonize, 'OUTPUT_DIR': RAW}
-exec(compile(ast.Module(body=definitions, type_ignores=[]), 'signal_fixing.ipynb', 'exec'), namespace)
-first_pass, pairs = namespace['fix_ecg_debug'](str(source_path), distance_threshold=30, invert=False)
-cv2.imwrite(str(RAW / 'endpoint-first-pass.png'), first_pass)
+# Display actual pixels added by the repaired method.
 skeleton = (skeletonize(source > 127) * 255).astype(np.uint8)
 cv2.imwrite(str(RAW / 'input-skeleton.png'), skeleton)
-debug = cv2.cvtColor(cv2.imread(str(RAW / 'debug-skeleton-bridges.png')), cv2.COLOR_BGR2RGB)
+added = cv2.imread(str(OUTPUTS / 'tangent-added.png'), cv2.IMREAD_GRAYSCALE)
+repaired_skeleton = cv2.imread(str(OUTPUTS / 'tangent-skeleton.png'), cv2.IMREAD_GRAYSCALE)
+bridge_records = json.loads((OUTPUTS / 'tangent-bridges.json').read_text())
+pairs = len(bridge_records)
+for name in ['tangent-added.png', 'tangent-skeleton.png', 'tangent-bridges.json']:
+    shutil.copyfile(OUTPUTS / name, RAW / name)
+debug = cv2.cvtColor(((source > 127) * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
+debug[added > 0] = [232, 164, 76]
+cv2.imwrite(str(RAW / 'tangent-overlay.png'), cv2.cvtColor(debug, cv2.COLOR_RGB2BGR))
 
 BG, INK, BLUE, MUTED = '#f6f9fd', '#16314d', '#326c9f', '#60778d'
 plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 13})
 frames = []
 stages = [
     ('01 / INPUT', 'A fragmented ECG trace', source,
-     'Original repository crop · white foreground on black · 862 × 392 pixels'),
-    ('02 / STRUCTURE', 'Reduce the trace to a skeleton', skeleton,
-     'One-pixel skeleton used to identify endpoints and disconnected structure'),
-    ('03 / CANDIDATES', 'Inspect endpoint connections', debug,
-     f'First endpoint pass · threshold 30 px · {pairs} pairs connected · red endpoints / magenta paired endpoints / green bridges'),
-    ('04 / FIRST PASS', 'Merge the first set of bridges', first_pass,
-     'Actual nearest-endpoint output after one pass · inspect every added connection'),
-    ('05 / ITERATION', 'Compare the five-pass result', results['endpoint-bridged'],
-     'Endpoint variant · thresholds 30, 40, 50, 60, 70 px · image output, without time–voltage calibration'),
+     'Original repository crop · thresholded for reconstruction · 862 × 392 pixels'),
+    ('02 / STRUCTURE', 'Estimate local trace direction', skeleton,
+     'Endpoint tangents use skeleton neighborhoods rather than a single adjacent pixel'),
+    ('03 / CONNECTIONS', 'Inspect the accepted bridges', debug,
+     f'{pairs} accepted bridges · amber = newly added pixels · white = original binary foreground'),
+    ('04 / REPAIR', 'Reconnect without global thickening', results['tangent-bridged'],
+     'Local-width cubic connections · endpoint matching and crossing checks · original foreground preserved'),
+    ('05 / REVIEW', 'Review the repaired centerline', repaired_skeleton,
+     'Skeleton of the repaired image · inferred connections require review against the source'),
 ]
 for index, (kicker, title, data, subtitle) in enumerate(stages):
     fig = plt.figure(figsize=(12, 6.7), dpi=100, facecolor=BG)
@@ -89,16 +84,16 @@ frames[0].save(ASSETS / 'walkthrough.gif', save_all=True, append_images=frames[1
 
 fig, axes = plt.subplots(2, 2, figsize=(12, 7.6), dpi=150, facecolor=BG)
 fig.subplots_adjust(left=.035, right=.975, top=.82, bottom=.11, hspace=.23, wspace=.07)
-fig.text(.035, .94, 'ONE CROP, THREE RECONSTRUCTION APPROACHES', color=BLUE, fontsize=12, weight='bold')
-fig.text(.035, .882, 'Compare connectivity and added geometry', color=INK, fontsize=22, weight='bold')
+fig.text(.035, .94, 'ONE CROP / BEFORE AND AFTER THE ALGORITHM CHANGE', color=BLUE, fontsize=12, weight='bold')
+fig.text(.035, .882, 'Earlier methods and the repaired version', color=INK, fontsize=22, weight='bold')
 counts = {'input': int(label(source > 127, connectivity=2).max())}
 for name, data in results.items():
     counts[name] = int(label(data > 127, connectivity=2).max())
 for ax, (name, title, data) in zip(axes.ravel(), [
     ('input', 'Input crop', source),
-    ('component-bridged', 'Component-distance baseline', results['component-bridged']),
-    ('constrained-bridged', 'Row-wise geometric constraints', results['constrained-bridged']),
-    ('endpoint-bridged', 'Iterative endpoint variant', results['endpoint-bridged']),
+    ('component-bridged', 'Previous: component baseline', results['component-bridged']),
+    ('endpoint-bridged', 'Previous: endpoint variant', results['endpoint-bridged']),
+    ('tangent-bridged', 'New: tangent-guided repair', results['tangent-bridged']),
 ]):
     ax.imshow(data, cmap='gray', vmin=0, vmax=255, interpolation='nearest')
     unit = 'component' if counts[name] == 1 else 'components'
@@ -113,7 +108,9 @@ metrics = {
     'shape_height_width': list(source.shape),
     'connectivity': 8,
     'foreground_components': counts,
-    'first_endpoint_pass': {'distance_threshold_px': 30, 'pairs_connected': pairs},
+    'tangent_repair': {'max_gap_px': 65, 'tangent_span_px': 15, 'accepted_bridges': pairs,
+                       'added_foreground_pixels': int(np.count_nonzero(added)),
+                       'original_foreground_preserved': bool(np.all(results['tangent-bridged'][source > 127] == 255))},
     'interpretation': 'Connectivity counts for one repository crop; not waveform accuracy or clinical validation.',
     'runtime': {'python': platform.python_version(), 'opencv': cv2.__version__, 'numpy': np.__version__},
 }
@@ -134,7 +131,7 @@ hero += text(94, 64, 'ECG image reconstruction', 12, MUTED)
 hero += text(39, 136, 'Digitize EKG', 58, INK, 700)
 hero += text(41, 178, 'Reconstructing fragmented ECG traces', 26, '#385976')
 hero += text(41, 219, 'Skeletons, endpoints, and geometric constraints.', 17, MUTED)
-hero += text(41, 246, 'Three approaches. Inspectable intermediate results.', 17, MUTED)
+hero += text(41, 246, 'Local tangents. Width-aware gap repair.', 17, MUTED)
 hero += text(41, 277, 'PYTHON  /  IMAGE PROCESSING  /  SIGNAL EXPLORATION', 10, BLUE, 600, 'letter-spacing="1.2"')
 hero += '<rect x="788" y="35" width="370" height="230" rx="12" fill="white" stroke="#d9e5f0"/>'
 hero += '<rect x="801" y="48" width="344" height="200" rx="8" fill="url(#grid)"/>'

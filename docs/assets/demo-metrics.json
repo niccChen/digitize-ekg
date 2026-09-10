@@ -9,11 +9,15 @@
     "input": 10,
     "component-bridged": 1,
     "constrained-bridged": 10,
-    "endpoint-bridged": 5
+    "endpoint-bridged": 5,
+    "tangent-bridged": 1
   },
-  "first_endpoint_pass": {
-    "distance_threshold_px": 30,
-    "pairs_connected": 10
+  "tangent_repair": {
+    "max_gap_px": 65,
+    "tangent_span_px": 15,
+    "accepted_bridges": 9,
+    "added_foreground_pixels": 3055,
+    "original_foreground_preserved": true
   },
   "interpretation": "Connectivity counts for one repository crop; not waveform accuracy or clinical validation.",
   "runtime": {
