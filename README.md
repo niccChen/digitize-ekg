@@ -1,14 +1,6 @@
-<p align="center">
-  <img src="./docs/assets/header.svg" alt="Digitize EKG — Reconstructing fragmented ECG traces. Computer vision and signal processing." width="100%">
-</p>
+# Digitize EKG
 
-<p align="center">
-  <img src="./docs/assets/python.svg" alt="Python" height="26">
-  <img src="./docs/assets/opencv.svg" alt="OpenCV" height="26">
-  <img src="./docs/assets/skimage.svg" alt="scikit-image" height="26">
-  <img src="./docs/assets/scipy.svg" alt="SciPy" height="26">
-  <img src="./docs/assets/jupyter.svg" alt="Jupyter" height="26">
-</p>
+Python · OpenCV · scikit-image · SciPy · Jupyter
 
 <p align="center">
   <a href="#the-project">The project</a> ·
@@ -54,8 +46,6 @@ The included crop has approximately 5-pixel blocks. The notebook estimates this 
 
 ## Current method and baselines
 
-<img src="./docs/assets/method-comparison.png" alt="Same crop, before and after the algorithm change: input has 10 components; earlier component baseline has 1; earlier endpoint method has 5; tangent-guided repair has 1 with locally sized bridges." width="100%">
-
 | Method | Implementation | What it explores |
 | --- | --- | --- |
 | **Current: tangent-guided repair** | Local direction estimates, endpoint matching, crossing checks, and cubic gap connections. | Preserve existing binary foreground while matching both endpoint widths and the source pixel grid. |
@@ -65,25 +55,7 @@ The included crop has approximately 5-pixel blocks. The notebook estimates this 
 
 On the included crop, the current repair adds **nine bridges**, reducing the number of foreground components from ten to one while preserving all original binary foreground pixels. The earlier component baseline also reaches one component, but its global thickness estimate adds much broader connectors. The earlier endpoint method leaves five components.
 
-Connectivity alone does not establish waveform accuracy. The comparison shows the actual added geometry; [demo-metrics.json](./docs/assets/demo-metrics.json) records the component counts and preserved-input check, and [the bridge report](./docs/assets/demo/tangent-bridges.json) records each accepted connection.
-
-### Pixel detail
-
-<img src="./docs/assets/pixel-detail.png" alt="Two enlarged gaps at the same coordinates: original fragments, the earlier thin native-pixel connectors, and the current connections with transitioning widths and source-aligned pixel blocks." width="100%">
-
-Both close-ups use the same source coordinates and nearest-neighbor magnification. The earlier repair used the thinner endpoint width; the current repair meets both ends and keeps the source's coarse staircase edges. The [grid report](./docs/assets/demo/tangent-grid.json) records the estimated spacing and phase.
-
-### Processing flow
-
-```mermaid
-flowchart LR
-    A["Prepared ECG crop<br/>Binary foreground"] --> B["Skeleton / components"]
-    B --> C["Tangent-guided matching<br/>Width and crossing checks"]
-    C --> D["Reconstructed image"]
-    C --> E["Debug overlays"]
-    classDef stage fill:#edf4fb,stroke:#a7c4dd,color:#16314d;
-    class A,B,C,D,E stage;
-```
+Connectivity alone does not establish waveform accuracy. The animation shows the actual added geometry; [demo-metrics.json](./docs/assets/demo-metrics.json) records the component counts and preserved-input check, and [the bridge report](./docs/assets/demo/tangent-bridges.json) records each accepted connection.
 
 ## Run the example
 
@@ -109,7 +81,7 @@ jupyter nbconvert --to notebook --execute signal_fixing.ipynb \
   --output signal-fixing.executed.ipynb --output-dir outputs
 ```
 
-To rebuild the README figures after executing the notebook:
+To rebuild the README animation after executing the notebook:
 
 ```bash
 python scripts/build_demo.py
@@ -146,7 +118,7 @@ Install `requirements-research.txt`, obtain those files from [PTB-XL on PhysioNe
 | [testing_and_development.ipynb](./testing_and_development.ipynb) | Exploratory signal and image analysis. |
 | [images/](./images/) | Four full-page ECG example images. |
 | [result/](./result/) | Original prepared crops and historical result images. |
-| [docs/assets/](./docs/assets/) | Reproducible walkthrough, method comparison, and project visuals. |
+| [docs/assets/](./docs/assets/) | Animated walkthrough and reproducibility reports. |
 | [scripts/build_demo.py](./scripts/build_demo.py) | Build the presentation from actual notebook results. |
 | `outputs/` | Local generated files; excluded from Git. |
 

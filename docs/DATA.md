@@ -7,7 +7,7 @@ This repository includes different kinds of material with different roles:
 | `ptbxl_database.csv` | PTB-XL metadata used by the exploration notebook. It contains 21,799 data rows; metadata is not the waveform recording itself. |
 | `images/00001_lr-0.png` through `00004_lr-0.png` | Full-page ECG examples already present in the repository. The filenames correspond to record-style IDs; the page-rendering script is not included. |
 | `result/example.png` and `result/example1.png` | Prepared crops already present in the repository. The main reconstruction demo uses `example.png`. The notebook starts at this prepared-image stage. |
-| Other images in `result/` | Historical experiment outputs retained for reference. Newly verified figures live in `docs/assets/`. |
+| Other images in `result/` | Historical experiment outputs retained for reference. The animated walkthrough and its reports live in `docs/assets/`. |
 
 The companion notebook calls `wfdb.rdsamp` to load the PTB-XL waveform files and uses `scp_statements.csv` to aggregate annotations. Those waveform files and the annotation mapping are external dependencies. Obtain them from the [official PhysioNet dataset page](https://physionet.org/content/ptb-xl/), then set `path` to the dataset directory with a trailing slash.
 
