@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from skimage.measure import label
 
-from ecg_reconstruction import repair_trace
+from ecg_reconstruction import PixelGrid, estimate_pixel_grid, repair_trace
 
 
 def components(image):
@@ -86,6 +86,55 @@ class ReconstructionTests(unittest.TestCase):
         self.assertEqual(result.bridges, [])
         self.assertFalse(np.any(result.image))
 
+    def test_unequal_widths_meet_both_ends_without_a_thin_neck(self):
+        image = np.zeros((110, 220), np.uint8)
+        cv2.line(image, (15, 55), (83, 55), 255, 5)
+        cv2.line(image, (133, 55), (205, 55), 255, 15)
+        result = repair_trace(image, max_gap=70)
+        widths = np.count_nonzero(result.image, axis=0)
+        self.assertEqual(components(result.image), 1)
+        self.assertEqual(len(result.bridges), 1)
+        self.assertEqual(widths[88], widths[75])
+        self.assertEqual(widths[123], widths[150])
+        self.assertTrue(np.all(np.diff(widths[88:124]) >= 0))
+        self.assertGreater(widths[110], widths[88])
+        self.assertTrue(np.all(result.image[image != 0] == 255))
+
+    def test_coarse_connections_preserve_pixel_blocks_and_phase(self):
+        low = np.zeros((36, 64), np.uint8)
+        cv2.line(low, (4, 18), (59, 18), 255, 2)
+        truth = np.repeat(np.repeat(low, 5, axis=0), 5, axis=1)
+        broken = truth.copy()
+        broken[:, 135:170] = 0
+        for dx, dy in [(0, 0), (2, 3)]:
+            image = np.pad(broken, ((dy, 5-dy), (dx, 5-dx)))
+            expected = np.pad(truth, ((dy, 5-dy), (dx, 5-dx)))
+            result = repair_trace(image, max_gap=60, pixel_grid=PixelGrid(5, 5, dx, dy))
+            self.assertEqual(len(result.bridges), 1)
+            self.assertEqual(components(result.image), 1)
+            self.assertTrue(np.array_equal(result.image, expected))
+            cells = result.image[dy:dy+180, dx:dx+320].reshape(36, 5, 64, 5)
+            self.assertTrue(np.all(cells.min(axis=(1, 3)) == cells.max(axis=(1, 3))))
+
+    def test_display_grid_estimate_recovers_scale_and_phase(self):
+        low = np.zeros((80, 100), np.uint8)
+        x = np.arange(5, 95)
+        y = np.rint(40 + 27*np.sin(x/9)).astype(int)
+        cv2.polylines(low, [np.column_stack([x, y]).astype(np.int32)], False, 255, 3)
+        image = np.pad(np.repeat(np.repeat(low, 5, axis=0), 5, axis=1), ((3, 2), (2, 3)))
+        grid = estimate_pixel_grid(image)
+        self.assertIsNotNone(grid)
+        for actual, expected in [(grid.step_x, 5), (grid.step_y, 5),
+                                 (grid.offset_x, 2), (grid.offset_y, 3)]:
+            self.assertAlmostEqual(actual, expected, places=2)
+
+    def test_grid_estimation_does_not_force_weak_or_sparse_evidence(self):
+        noise = np.random.default_rng(42).integers(0, 2, (120, 150), dtype=np.uint8)
+        self.assertIsNone(estimate_pixel_grid(noise))
+        line = np.zeros((60, 90), np.uint8)
+        line[25:30, 10:80] = 255
+        self.assertIsNone(estimate_pixel_grid(line))
+
     def test_invalid_inputs_are_rejected(self):
         with self.assertRaises(ValueError):
             repair_trace(np.zeros((10, 10, 3)))
@@ -93,6 +142,8 @@ class ReconstructionTests(unittest.TestCase):
             repair_trace(np.full((10, 10), 127))
         with self.assertRaises(ValueError):
             repair_trace(np.zeros((10, 10)), max_gap=0)
+        with self.assertRaises(ValueError):
+            PixelGrid(0, 5)
 
 
 if __name__ == '__main__':

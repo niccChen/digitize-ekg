@@ -16,7 +16,13 @@
     "max_gap_px": 65,
     "tangent_span_px": 15,
     "accepted_bridges": 9,
-    "added_foreground_pixels": 3055,
+    "source_display_grid": {
+      "step_x": 5.034000000000001,
+      "step_y": 5.037,
+      "offset_x": 4.182646745190249,
+      "offset_y": 1.218521286842315
+    },
+    "added_foreground_pixels": 4025,
     "original_foreground_preserved": true
   },
   "interpretation": "Connectivity counts for one repository crop; not waveform accuracy or clinical validation.",

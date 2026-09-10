@@ -36,7 +36,10 @@ The current repair implementation is in [ecg_reconstruction.py](./ecg_reconstruc
 - Estimate outward directions from **local skeleton neighborhoods**, with stable end-cap alignment on straight traces.
 - Pair endpoints from different components using distance and direction; allow at most one new connection per endpoint.
 - Reject crossings and connections that would shortcut an already connected component.
-- Draw **cubic connections at the local trace width**, then merge only newly added pixels. The existing binary foreground stays intact.
+- Draw **cubic connections that transition between both endpoint widths**.
+- For block-scaled inputs, align new connections with the source's **pixel-block spacing and phase**. Merge only new pixels; the existing binary foreground stays intact.
+
+The included crop has approximately 5-pixel blocks. The notebook estimates this display grid from repeated foreground edges; weak evidence leaves native pixel rendering in place. This matches image granularity, not physical time–voltage calibration.
 
 ## See the reconstruction
 
@@ -55,7 +58,7 @@ The current repair implementation is in [ecg_reconstruction.py](./ecg_reconstruc
 
 | Method | Implementation | What it explores |
 | --- | --- | --- |
-| **Current: tangent-guided repair** | Local direction estimates, endpoint matching, crossing checks, and cubic gap connections. | Repair gaps while preserving existing binary foreground and matching local trace width. |
+| **Current: tangent-guided repair** | Local direction estimates, endpoint matching, crossing checks, and cubic gap connections. | Preserve existing binary foreground while matching both endpoint widths and the source pixel grid. |
 | **Component-distance baseline** | Find the nearest pixels between component pairs; connect pairs below a distance threshold. | How far connectivity alone can go. Newly added bridges are dilated using an estimated trace thickness. |
 | **Row-wise geometric constraints** | Segment at blank rows, apply morphological closing, and score endpoint pairs by distance plus a slope penalty. | Restrict candidate bridges using horizontal direction, vertical displacement, and skeleton-intersection checks. |
 | **Iterative endpoint variant** | Pair nearby unused endpoints, draw bridges, and rerun with increasing thresholds. | Make the connection process visible through debug overlays and intermediate images. |
@@ -63,6 +66,12 @@ The current repair implementation is in [ecg_reconstruction.py](./ecg_reconstruc
 On the included crop, the current repair adds **nine bridges**, reducing the number of foreground components from ten to one while preserving all original binary foreground pixels. The earlier component baseline also reaches one component, but its global thickness estimate adds much broader connectors. The earlier endpoint method leaves five components.
 
 Connectivity alone does not establish waveform accuracy. The comparison shows the actual added geometry; [demo-metrics.json](./docs/assets/demo-metrics.json) records the component counts and preserved-input check, and [the bridge report](./docs/assets/demo/tangent-bridges.json) records each accepted connection.
+
+### Pixel detail
+
+<img src="./docs/assets/pixel-detail.png" alt="Two enlarged gaps at the same coordinates: original fragments, the earlier thin native-pixel connectors, and the current connections with transitioning widths and source-aligned pixel blocks." width="100%">
+
+Both close-ups use the same source coordinates and nearest-neighbor magnification. The earlier repair used the thinner endpoint width; the current repair meets both ends and keeps the source's coarse staircase edges. The [grid report](./docs/assets/demo/tangent-grid.json) records the estimated spacing and phase.
 
 ### Processing flow
 
@@ -112,7 +121,7 @@ python scripts/build_demo.py
 python -m unittest discover -s tests -v
 ```
 
-Nine tests cover a known straight trace, a curved gap, steep and reflected traces, separated parallel traces, crossing obstruction, an existing connected component, long gaps, empty foreground, and invalid input. These synthetic checks verify geometric behavior; broader waveform-fidelity evaluation needs reference signals.
+Thirteen tests cover straight and curved traces, steep and reflected gaps, parallel traces, crossing obstruction, existing connections, long gaps, empty foreground, and invalid input. They also check unequal endpoint widths, coarse pixel-block alignment, grid-scale estimation, and weak-evidence fallback. These synthetic checks verify geometric behavior; broader waveform-fidelity evaluation needs reference signals.
 
 ### Explore the original waveform data
 

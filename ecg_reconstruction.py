@@ -8,6 +8,90 @@ import numpy as np
 from skimage.morphology import skeletonize
 
 
+@dataclass(frozen=True)
+class PixelGrid:
+    """Display-block spacing and edge phase, in input-image pixels."""
+
+    step_x: float
+    step_y: float
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+
+    def __post_init__(self):
+        for step, offset in [(self.step_x, self.offset_x), (self.step_y, self.offset_y)]:
+            if not math.isfinite(step) or step < 1 or not math.isfinite(offset):
+                raise ValueError('Pixel-grid steps must be finite and at least one pixel; offsets must be finite.')
+
+
+def estimate_pixel_grid(binary):
+    """Find a strong, repeated edge lattice in a block-scaled binary image.
+
+    Searches 2–12 pixel display blocks independently on each axis. Returns None
+    when either axis has too few edges or weak periodic evidence.
+    This estimates display pixel blocks, not physical time/voltage calibration.
+    """
+    mask = np.asarray(binary) != 0
+    if mask.ndim != 2:
+        raise ValueError('Expected a 2D binary mask.')
+    estimates = []
+    periods = np.linspace(2.0, 12.0, 10001)
+    for axis in (1, 0):
+        weights = np.abs(np.diff(mask.astype(float), axis=axis)).sum(axis=1-axis)
+        positions = np.flatnonzero(weights) + 1
+        if len(positions) < 20:
+            return None
+        weights = weights[positions-1]
+        responses = []
+        for chunk in np.array_split(periods, 50):
+            response = (np.exp(2j*np.pi*positions[None, :]/chunk[:, None])*weights).sum(axis=1)
+            responses.extend(np.abs(response) / weights.sum())
+        responses = np.array(responses)
+        peak = float(responses.max())
+        if peak < .78:
+            return None
+        # Prefer the fundamental period over its shorter harmonic at a tie.
+        choices = np.flatnonzero(responses >= peak - 1e-6)
+        period = float(periods[choices[-1]])
+        z = (np.exp(2j*np.pi*positions/period)*weights).sum()
+        offset = float(np.angle(z)*period/(2*np.pi) % period)
+        estimates.append((period, offset))
+    return PixelGrid(estimates[0][0], estimates[1][0], estimates[0][1], estimates[1][1])
+
+
+def _grid_projection(image, grid):
+    """Sample the new stroke on a source-aligned coarse lattice only."""
+    maps = []
+    for length, step, offset in [(image.shape[1], grid.step_x, grid.offset_x),
+                                 (image.shape[0], grid.step_y, grid.offset_y)]:
+        k0 = math.floor(-offset/step)-1
+        k1 = math.ceil((length-offset)/step)+1
+        edges = np.unique(np.rint(offset + np.arange(k0, k1+1)*step).astype(int))
+        index = np.searchsorted(edges, np.arange(length), side='right')-1
+        centers = np.rint((edges[:-1]+edges[1:]-1)/2).astype(int)
+        maps.append(np.clip(centers[index], 0, length-1))
+    return image[np.ix_(maps[1], maps[0])]
+
+
+def _paint_connection(shape, points, a, b, grid):
+    """Blend the two local widths; optionally retain the source's block size."""
+    width_a = max(1.0, a.width-1.0)
+    width_b = max(1.0, b.width-1.0)
+    lengths = np.linalg.norm(np.diff(points.astype(float), axis=0), axis=1)
+    distance = np.r_[0.0, np.cumsum(lengths)]
+    t = distance / max(distance[-1], 1.0)
+    # A smooth width transition meets each end without a thin, constant neck.
+    blend = t*t*(3-2*t)
+    widths = width_a + (width_b-width_a)*blend
+    bridge = np.zeros(shape, dtype=np.uint8)
+    for index in range(len(points)-1):
+        thickness = max(1, int(round((widths[index]+widths[index+1])/2)))
+        cv2.line(bridge, tuple(points[index]), tuple(points[index+1]), 255,
+                 thickness=thickness, lineType=cv2.LINE_8)
+    if grid is not None:
+        bridge = _grid_projection(bridge, grid)
+    return bridge, [max(1, int(round(width_a))), max(1, int(round(width_b)))]
+
+
 @dataclass
 class Endpoint:
     xy: np.ndarray
@@ -93,13 +177,15 @@ def _curve(a, b, span):
 
 
 def repair_trace(binary, *, max_gap=65.0, tangent_span=15.0,
-                 max_endpoint_angle=110.0, max_mean_angle=70.0):
+                 max_endpoint_angle=110.0, max_mean_angle=70.0, pixel_grid=None):
     """Reconnect compatible endpoints without thickening the existing trace.
 
     Input is a 2D binary mask with nonzero foreground. Matching uses outward
     tangents, distinct components, one connection per endpoint, and collision
-    checks. Uncertain or obstructed pairs remain disconnected. All distances
-    are in pixels; this function does not infer calibrated ECG samples.
+    checks. Width transitions match both endpoints. An optional PixelGrid keeps
+    newly drawn connections on the source block lattice. Uncertain or obstructed
+    pairs remain disconnected. All distances are in pixels; this function does
+    not infer calibrated ECG samples.
     """
     array = np.asarray(binary)
     if array.ndim != 2 or array.size == 0:
@@ -147,10 +233,7 @@ def repair_trace(binary, *, max_gap=65.0, tangent_span=15.0,
         if i in used or j in used or root(a.component) == root(b.component):
             continue
         points = _curve(a, b, tangent_span)
-        # Match the thinner local trace; bounding-box width is not line width.
-        line_width = max(1, int(round(min(a.width, b.width))) - 1)
-        bridge = np.zeros(mask.shape, dtype=np.uint8)
-        cv2.polylines(bridge, [points], False, 255, thickness=line_width, lineType=cv2.LINE_8)
+        bridge, endpoint_widths = _paint_connection(mask.shape, points, a, b, pixel_grid)
         # Reject crossings of a third component, including the bridge's width.
         third = mask & (components != a.component) & (components != b.component)
         if np.any((bridge != 0) & third):
@@ -162,6 +245,12 @@ def repair_trace(binary, *, max_gap=65.0, tangent_span=15.0,
         outside_caps = (bridge != 0) & (caps == 0)
         if np.any(outside_caps & (mask | (added != 0))):
             continue
+        if pixel_grid is not None:
+            # Coarse sampling can erase a narrow section. Accept only a real
+            # connection, with no detached blocks, before updating the graph.
+            joined = (bridge != 0) | (components == a.component) | (components == b.component)
+            if cv2.connectedComponents(joined.astype(np.uint8), connectivity=8)[0] != 2:
+                continue
         new_pixels = (bridge != 0) & ~mask
         if not np.any(new_pixels):
             continue
@@ -169,7 +258,7 @@ def repair_trace(binary, *, max_gap=65.0, tangent_span=15.0,
         parent[root(a.component)] = root(b.component)
         used.update((i, j))
         bridges.append({'start_xy': a.xy.astype(int).tolist(), 'end_xy': b.xy.astype(int).tolist(),
-                        'gap_px': round(gap, 3), 'width_px': line_width,
+                        'gap_px': round(gap, 3), 'endpoint_widths_px': endpoint_widths,
                         'endpoint_angles_deg': [round(angle_a, 2), round(angle_b, 2)],
                         'score': round(score, 3), 'path_xy': points.tolist()})
     output = (mask.astype(np.uint8) * 255) | added

@@ -9,7 +9,10 @@
       281
     ],
     "gap_px": 11.18,
-    "width_px": 8,
+    "endpoint_widths_px": [
+      8,
+      11
+    ],
     "endpoint_angles_deg": [
       45.0,
       4.54
@@ -164,7 +167,10 @@
       288
     ],
     "gap_px": 15.62,
-    "width_px": 10,
+    "endpoint_widths_px": [
+      10,
+      18
+    ],
     "endpoint_angles_deg": [
       42.47,
       44.89
@@ -371,7 +377,10 @@
       268
     ],
     "gap_px": 26.401,
-    "width_px": 7,
+    "endpoint_widths_px": [
+      14,
+      7
+    ],
     "endpoint_angles_deg": [
       7.42,
       47.85
@@ -710,7 +719,10 @@
       295
     ],
     "gap_px": 39.319,
-    "width_px": 14,
+    "endpoint_widths_px": [
+      14,
+      18
+    ],
     "endpoint_angles_deg": [
       6.75,
       0.71
@@ -1201,7 +1213,10 @@
       128
     ],
     "gap_px": 31.654,
-    "width_px": 4,
+    "endpoint_widths_px": [
+      26,
+      4
+    ],
     "endpoint_angles_deg": [
       31.85,
       25.44
@@ -1600,7 +1615,10 @@
       269
     ],
     "gap_px": 48.374,
-    "width_px": 14,
+    "endpoint_widths_px": [
+      18,
+      14
+    ],
     "endpoint_angles_deg": [
       29.74,
       3.81
@@ -2203,7 +2221,10 @@
       266
     ],
     "gap_px": 47.248,
-    "width_px": 11,
+    "endpoint_widths_px": [
+      11,
+      20
+    ],
     "endpoint_angles_deg": [
       37.85,
       36.41
@@ -2790,7 +2811,10 @@
       297
     ],
     "gap_px": 45.453,
-    "width_px": 9,
+    "endpoint_widths_px": [
+      9,
+      18
+    ],
     "endpoint_angles_deg": [
       43.19,
       39.64
@@ -3357,7 +3381,10 @@
       261
     ],
     "gap_px": 50.578,
-    "width_px": 20,
+    "endpoint_widths_px": [
+      20,
+      20
+    ],
     "endpoint_angles_deg": [
       31.92,
       59.71

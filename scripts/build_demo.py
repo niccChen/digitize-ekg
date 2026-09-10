@@ -43,8 +43,9 @@ cv2.imwrite(str(RAW / 'input-skeleton.png'), skeleton)
 added = cv2.imread(str(OUTPUTS / 'tangent-added.png'), cv2.IMREAD_GRAYSCALE)
 repaired_skeleton = cv2.imread(str(OUTPUTS / 'tangent-skeleton.png'), cv2.IMREAD_GRAYSCALE)
 bridge_records = json.loads((OUTPUTS / 'tangent-bridges.json').read_text())
+pixel_grid = json.loads((OUTPUTS / 'tangent-grid.json').read_text())
 pairs = len(bridge_records)
-for name in ['tangent-added.png', 'tangent-skeleton.png', 'tangent-bridges.json']:
+for name in ['tangent-added.png', 'tangent-skeleton.png', 'tangent-bridges.json', 'tangent-grid.json']:
     shutil.copyfile(OUTPUTS / name, RAW / name)
 debug = cv2.cvtColor(((source > 127) * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB)
 debug[added > 0] = [232, 164, 76]
@@ -61,7 +62,7 @@ stages = [
     ('03 / CONNECTIONS', 'Inspect the accepted bridges', debug,
      f'{pairs} accepted bridges · amber = newly added pixels · white = original binary foreground'),
     ('04 / REPAIR', 'Reconnect without global thickening', results['tangent-bridged'],
-     'Local-width cubic connections · endpoint matching and crossing checks · original foreground preserved'),
+     'Two-end width transitions · source-aligned pixel blocks · original binary foreground preserved'),
     ('05 / REVIEW', 'Review the repaired centerline', repaired_skeleton,
      'Skeleton of the repaired image · inferred connections require review against the source'),
 ]
@@ -103,12 +104,44 @@ fig.text(.035, .041, '8-connected foreground components on this crop only. Fewer
 fig.savefig(ASSETS / 'method-comparison.png', dpi=150, facecolor=BG)
 plt.close(fig)
 
+# Same-coordinate, nearest-neighbor close-ups preserve the actual pixel grain.
+# The previous result is a frozen output from commit 987aff9, not a rerender.
+prior = cv2.imread(str(RAW / 'prior-tangent-bridged.png'), cv2.IMREAD_GRAYSCALE)
+if prior is None or prior.shape != source.shape:
+    raise ValueError('The historical repair snapshot is missing or has the wrong shape.')
+fig, axes = plt.subplots(2, 3, figsize=(12, 9), dpi=100, facecolor=BG)
+fig.subplots_adjust(left=.045, right=.955, top=.82, bottom=.11, hspace=.22, wspace=.09)
+fig.text(.045, .95, 'DETAIL / SAME SOURCE PIXELS AT EVERY STAGE', color=BLUE, fontsize=12, weight='bold')
+fig.text(.045, .898, 'Matching the source pixel grid', color=INK, fontsize=25, weight='bold')
+detail_windows = [('Upper gap', 215, 82, 90), ('Descending gap', 565, 245, 90)]
+for row, (region, x, y, size) in enumerate(detail_windows):
+    for col, (title, data) in enumerate([
+        ('Input fragments', ((source > 127)*255).astype(np.uint8)),
+        ('Previous connection', prior),
+        ('Pixel-matched connection', results['tangent-bridged']),
+    ]):
+        ax = axes[row, col]
+        ax.imshow(data[y:y+size, x:x+size], cmap='gray', vmin=0, vmax=255, interpolation='nearest')
+        if row == 0:
+            ax.set_title(title, color=INK, fontsize=12, pad=10)
+        if col == 0:
+            ax.set_ylabel(region, color=MUTED, fontsize=11, labelpad=12)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_color('#d9e5f0')
+fig.text(.045, .067, 'Widths transition between both endpoints; new pixels follow the source’s approximately 5 px blocks.', color=MUTED, fontsize=11)
+fig.text(.045, .039, 'Two 90 × 90 px crops · identical coordinates and magnification · original binary foreground preserved', color=MUTED, fontsize=10)
+fig.savefig(ASSETS / 'pixel-detail.png', dpi=100, facecolor=BG)
+plt.close(fig)
+
 metrics = {
     'source': 'result/example.png',
     'shape_height_width': list(source.shape),
     'connectivity': 8,
     'foreground_components': counts,
     'tangent_repair': {'max_gap_px': 65, 'tangent_span_px': 15, 'accepted_bridges': pairs,
+                       'source_display_grid': pixel_grid,
                        'added_foreground_pixels': int(np.count_nonzero(added)),
                        'original_foreground_preserved': bool(np.all(results['tangent-bridged'][source > 127] == 255))},
     'interpretation': 'Connectivity counts for one repository crop; not waveform accuracy or clinical validation.',
@@ -145,4 +178,4 @@ for name, title, width in [('python','Python',75),('opencv','OpenCV',84),('skima
     content+=text(width/2,17,title,12,'#426b8d',600,'text-anchor="middle"')
     svg(name+'.svg',width,26,content,title)
 print(json.dumps(metrics, indent=2))
-print('Built header, technology labels, walkthrough, and method comparison.')
+print('Built header, technology labels, walkthrough, method comparison, and pixel close-ups.')
